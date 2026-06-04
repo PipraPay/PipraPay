@@ -7525,33 +7525,41 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
                     if($gateway == ""){
                         echo json_encode(['status' => "false", 'title' => 'Incomplete Information', 'message' => 'Please fill in all required fields before proceeding.', 'csrf_token' => $new_csrf_token]);
                     }else{
-                        if (!file_exists(__DIR__ . '/../pp-modules/pp-gateways/'.$gateway.'/class.php')) {
+                        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $gateway)) {
+                            echo json_encode(['status' => 'false', 'title' => 'Request Failed', 'message' => 'Invalid request' , 'csrf_token' => $new_csrf_token]);
+                        }else if (!file_exists(__DIR__ . '/../pp-modules/pp-gateways/'.$gateway.'/class.php')) {
                             echo json_encode(['status' => 'false', 'title' => 'Request Failed', 'message' => 'Invalid request' , 'csrf_token' => $new_csrf_token]);
                         }else{
-                            require_once __DIR__ . '/../pp-modules/pp-gateways/'.$gateway.'/class.php';
+                            try {
+                                require_once __DIR__ . '/../pp-modules/pp-gateways/'.$gateway.'/class.php';
 
-                            $slug = basename(__DIR__ . '/../pp-modules/pp-gateways/'.$gateway);
+                                $slug = basename(__DIR__ . '/../pp-modules/pp-gateways/'.$gateway);
 
-                            // twenty-six → TwentySixTheme
-                            $class = str_replace(' ', '', ucwords(str_replace('-', ' ', $slug))) . 'Gateway';
+                                // twenty-six → TwentySixTheme
+                                $class = str_replace(' ', '', ucwords(str_replace('-', ' ', $slug))) . 'Gateway';
 
-                            if (!class_exists($class)) {
-                                echo json_encode(['status' => 'false', 'title' => 'Request Failed', 'message' => 'Invalid request' , 'csrf_token' => $new_csrf_token]);
-                            }else{
-                                $gatewayObj = new $class();
+                                if (!class_exists($class)) {
+                                    error_log('PipraPay gateway create failed for ' . $gateway . ': class ' . $class . ' not found');
+                                    echo json_encode(['status' => 'false', 'title' => 'Request Failed', 'message' => 'Invalid request' , 'csrf_token' => $new_csrf_token]);
+                                }else{
+                                    $gatewayObj = new $class();
 
-                                $gatewayInfo = $gatewayObj->info();
-                                $gatewayColor = $gatewayObj->color();
+                                    $gatewayInfo = $gatewayObj->info();
+                                    $gatewayColor = $gatewayObj->color();
 
-                                $gateway_id = generateItemID();
+                                    $gateway_id = generateItemID();
 
-                                $columns = ['gateway_id', 'brand_id', 'slug', 'name', 'display', 'logo', 'currency', 'primary_color', 'text_color', 'btn_color', 'btn_text_color', 'tab', 'created_date', 'updated_date'];
-                                $values = [$gateway_id, $global_response_brand['response'][0]['brand_id'], $slug, $gatewayInfo['title'], $gatewayInfo['title'], $site_url.'pp-content/pp-modules/pp-gateways/'.$gateway.'/'.$gatewayInfo['logo'], $gatewayInfo['currency'], $gatewayColor['primary_color'], $gatewayColor['text_color'], $gatewayColor['btn_color'], $gatewayColor['btn_text_color'], $gatewayInfo['tab'], getCurrentDatetime('Y-m-d H:i:s'), getCurrentDatetime('Y-m-d H:i:s')];
+                                    $columns = ['gateway_id', 'brand_id', 'slug', 'name', 'display', 'logo', 'currency', 'primary_color', 'text_color', 'btn_color', 'btn_text_color', 'tab', 'created_date', 'updated_date'];
+                                    $values = [$gateway_id, $global_response_brand['response'][0]['brand_id'], $slug, $gatewayInfo['title'], $gatewayInfo['title'], $site_url.'pp-content/pp-modules/pp-gateways/'.$gateway.'/'.$gatewayInfo['logo'], $gatewayInfo['currency'], $gatewayColor['primary_color'], $gatewayColor['text_color'], $gatewayColor['btn_color'], $gatewayColor['btn_text_color'], $gatewayInfo['tab'], getCurrentDatetime('Y-m-d H:i:s'), getCurrentDatetime('Y-m-d H:i:s')];
 
-                                insertData($db_prefix.'gateways', $columns, $values);
+                                    insertData($db_prefix.'gateways', $columns, $values);
 
-                                echo json_encode(['status' => 'true', 'title' => 'Gateway Created', 'message' => 'The gateway has been created successfully.', 'csrf_token' => $new_csrf_token]);
-                            
+                                    echo json_encode(['status' => 'true', 'title' => 'Gateway Created', 'message' => 'The gateway has been created successfully.', 'csrf_token' => $new_csrf_token]);
+                                
+                                }
+                            } catch (Throwable $e) {
+                                error_log('PipraPay gateway create failed for ' . $gateway . ': ' . $e->getMessage());
+                                echo json_encode(['status' => 'false', 'title' => 'Gateway Error', 'message' => 'The selected gateway module could not be loaded. Check the hosting error log for details.' , 'csrf_token' => $new_csrf_token]);
                             }
                         }
                     }

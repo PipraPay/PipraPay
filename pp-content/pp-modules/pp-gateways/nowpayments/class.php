@@ -1,15 +1,15 @@
-/**
- * Piprapay NowPayments Module
- *
- * @category  Payment_Gateway
- * @package   Piprapay
- * @author    Obaidullah Rion <support@webfuran.com>
- * @copyright 2026 WebFuran
- * @license   MIT (https://opensource.org/licenses/MIT)
- * @link      https://github.com/obaidullahrion
- */
-
 <?php
+    /**
+     * Piprapay NowPayments Module
+     *
+     * @category  Payment_Gateway
+     * @package   Piprapay
+     * @author    Obaidullah Rion <support@webfuran.com>
+     * @copyright 2026 WebFuran
+     * @license   MIT (https://opensource.org/licenses/MIT)
+     * @link      https://github.com/obaidullahrion
+     */
+
     class NowpaymentsGateway
     {
         public function info()

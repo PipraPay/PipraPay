@@ -232,8 +232,11 @@
                 <select class="js-select" name="gateway" data-search="true" data-remove="true" data-placeholder="Select gateway" required>
                     <?php
                         $gateways = [];
+                        $gatewayScanErrors = [];
+                        $gatewayBaseDir = __DIR__ . '/../../../pp-modules/pp-gateways';
 
-                        $gatewayDirs = glob(__DIR__ . '/../../../pp-modules/pp-gateways/*', GLOB_ONLYDIR);
+                        $gatewayDirs = is_dir($gatewayBaseDir) ? glob($gatewayBaseDir . '/*', GLOB_ONLYDIR) : [];
+                        $gatewayDirs = is_array($gatewayDirs) ? $gatewayDirs : [];
 
                         foreach ($gatewayDirs as $dir) {
 
@@ -241,19 +244,35 @@
                                 continue;
                             }
 
-                            require_once $dir . '/class.php';
-
                             $slug = basename($dir);
 
                             // twenty-six → TwentySixTheme
                             $class = str_replace(' ', '', ucwords(str_replace('-', ' ', $slug))) . 'Gateway';
 
-                            if (!class_exists($class)) {
+                            try {
+                                require_once $dir . '/class.php';
+
+                                if (!class_exists($class)) {
+                                    $gatewayScanErrors[] = $slug . ': class ' . $class . ' not found';
+                                    error_log('PipraPay gateway scan skipped ' . $slug . ': class ' . $class . ' not found');
+                                    continue;
+                                }
+
+                                $gatewayObj = new $class();
+                                $gatewayInfo = $gatewayObj->info();
+
+                                if (!is_array($gatewayInfo) || empty($gatewayInfo['title'])) {
+                                    $gatewayScanErrors[] = $slug . ': invalid gateway info';
+                                    error_log('PipraPay gateway scan skipped ' . $slug . ': invalid gateway info');
+                                    continue;
+                                }
+
+                                $gateways[$slug] = $gatewayInfo;
+                            } catch (Throwable $e) {
+                                $gatewayScanErrors[] = $slug . ': ' . $e->getMessage();
+                                error_log('PipraPay gateway scan failed for ' . $slug . ': ' . $e->getMessage());
                                 continue;
                             }
-
-                            $gatewayObj = new $class();
-                            $gateways[$slug] = $gatewayObj->info();
                         }
 
                         foreach ($gateways as $slug => $gateway) {
@@ -263,6 +282,15 @@
                         }
                     ?>
                 </select>
+                <?php if (empty($gateways)) { ?>
+                    <div class="alert alert-warning mt-3 mb-0">
+                        No gateway modules were loaded. Confirm <code>pp-content/pp-modules/pp-gateways</code> exists on the server, gateway folders are extracted, and PHP is 8.1-8.3 with required extensions enabled.
+                    </div>
+                <?php } elseif (!empty($gatewayScanErrors)) { ?>
+                    <div class="alert alert-warning mt-3 mb-0">
+                        Some gateway modules could not be loaded. Check the hosting error log for details.
+                    </div>
+                <?php } ?>
               </div>
             </div>
           </div>
