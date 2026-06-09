@@ -84,6 +84,25 @@
     |--------------------------------------------------------------------------
     */
     $page = $_GET['page'] ?? '';
+
+    /*
+    |--------------------------------------------------------------------------
+    | Fallback router (nginx / PHP built-in server / no .htaccess)
+    |--------------------------------------------------------------------------
+    | The .htaccess RewriteRule that maps "/login" to "index.php?page=login"
+    | only runs under Apache mod_rewrite. On servers that front-control to
+    | index.php without rewriting (e.g. Laravel Valet's nginx), $_GET['page']
+    | is empty, so derive it from the request path instead.
+    */
+    if ($page === '') {
+        $uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+        $base = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+        if ($base !== '/' && $base !== '' && strpos($uri, $base) === 0) {
+            $uri = substr($uri, strlen($base));
+        }
+        $page = rawurldecode($uri);
+    }
+
     $page = trim($page, '/');
 
     /*
