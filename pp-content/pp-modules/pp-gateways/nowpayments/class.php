@@ -1,3 +1,4 @@
+<?php
 /**
  * Piprapay NowPayments Module
  *
@@ -7,9 +8,9 @@
  * @copyright 2026 WebFuran
  * @license   MIT (https://opensource.org/licenses/MIT)
  * @link      https://github.com/obaidullahrion
+ * Fixed by   Shahrial Amin
  */
 
-<?php
     class NowpaymentsGateway
     {
         public function info()
