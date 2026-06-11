@@ -2081,7 +2081,38 @@
         $pdf->SetAutoPageBreak(true, 15);
 
         if (!empty($brand['logo'])) {
-            $pdf->Image($brand['logo'], 10, 10, 35);
+            $logo = $brand['logo'];
+            $tempLogo = null;
+
+            $ext = strtolower(pathinfo(parse_url($logo, PHP_URL_PATH), PATHINFO_EXTENSION));
+
+            if ($ext === 'webp') {
+                if (function_exists('imagecreatefromwebp')) {
+                    $webpImage = @imagecreatefromwebp($logo);
+                    if ($webpImage) {
+                        $tempLogo = tempnam(sys_get_temp_dir(), 'receipt_logo_') . '.png';
+                        imagepng($webpImage, $tempLogo);
+                        imagedestroy($webpImage);
+                        $logo = $tempLogo;
+                    } else {
+                        $logo = null;
+                    }
+                } else {
+                    $logo = null;
+                }
+            }
+
+            if (!empty($logo)) {
+                try {
+                    $pdf->Image($logo, 10, 10, 35);
+                } catch (Exception $e) {
+
+                }
+            }
+
+            if ($tempLogo && file_exists($tempLogo)) {
+                unlink($tempLogo);
+            }
         }
 
         $pdf->SetFont('Arial', 'B', 14);
