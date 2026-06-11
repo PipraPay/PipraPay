@@ -1838,6 +1838,16 @@
             if($status == "completed"){
                 $final_source_info = '--';
 
+                // Get existing source_info from the transaction
+                $existingSourceInfo = [];
+                $rawExisting = $response_transaciton['response'][0]['source_info'] ?? '';
+                if (!empty($rawExisting) && $rawExisting !== '--') {
+                    $decoded = json_decode($rawExisting, true);
+                    if (is_array($decoded)) {
+                        $existingSourceInfo = $decoded;
+                    }
+                }
+
                 if (is_array($source_info) && !empty($source_info)) {
                     $valid = true;
 
@@ -1853,8 +1863,13 @@
                     }
 
                     if ($valid) {
-                        $final_source_info = json_encode($source_info, JSON_UNESCAPED_UNICODE);
+                        // Merge: existing custom fields first, then gateway info appended
+                        $merged = array_merge($existingSourceInfo, $source_info);
+                        $final_source_info = json_encode($merged, JSON_UNESCAPED_UNICODE);
                     }
+                } elseif (!empty($existingSourceInfo)) {
+                    // No new source_info from gateway, but keep existing custom fields
+                    $final_source_info = json_encode($existingSourceInfo, JSON_UNESCAPED_UNICODE);
                 }
 
                 $params = [ ':gateway_id' => $gateway_id, ':brand_id' => $response_transaciton['response'][0]['brand_id'] ];
