@@ -3080,8 +3080,8 @@
 
                 echo '<div class="mb-3">';
 
-                // Show label for all except checkbox (we put label inside input for checkbox)
-                if ($type == 'checkbox') {
+                // Show label for all types EXCEPT checkbox (checkbox renders label per-option inline)
+                if ($type !== 'checkbox') {
                     echo "<label class='form-label' for='{$name}'>{$label}";
                     if ($required) echo ' <span class="text-danger">*</span>';
                     echo "</label>";
@@ -3098,8 +3098,9 @@
                         break;
 
                     case 'select':
-                        echo "<select name='{$name}' id='{$name}' class='form-control' {$required}>";
+                        echo "<select name='{$name}' id='{$name}' class='form-select' {$required}>";
                         if (!empty($field['options'])) {
+                            echo "<option value='' disabled selected>Select {$label}</option>";
                             foreach ($field['options'] as $opt) {
                                 echo "<option value='".htmlspecialchars($opt)."'>".htmlspecialchars($opt)."</option>";
                             }
@@ -3108,21 +3109,24 @@
                         break;
 
                     case 'checkbox':
+                        // Group label rendered above all options
+                        echo "<label class='form-label'>{$label}";
+                        if ($required) echo ' <span class="text-danger">*</span>';
+                        echo "</label>";
+
                         if (!empty($field['options'])) {
                             foreach ($field['options'] as $opt) {
-
                                 $optValue = htmlspecialchars($opt);
                                 $optId    = $name . '_' . preg_replace('/\s+/', '_', strtolower($opt));
 
                                 echo "<div class='form-check'>";
                                 echo "<input 
-                                        type='checkbox'
-                                        name='{$name}[]'
-                                        id='{$optId}'
-                                        class='form-check-input'
-                                        value='{$optValue}'
-                                        {$required}
-                                    >";
+                            type='checkbox'
+                            name='{$name}[]'
+                            id='{$optId}'
+                            class='form-check-input'
+                            value='{$optValue}'
+                        >";
                                 echo "<label class='form-check-label' for='{$optId}'>{$optValue}</label>";
                                 echo "</div>";
                             }
@@ -3155,7 +3159,6 @@
                         break;
                 }
 
-                // Optional context hint (for invoice, payment_link, etc.)
                 if (!empty($field['hint'])) {
                     echo "<small class='form-text text-muted'>{$field['hint']}</small>";
                 }
