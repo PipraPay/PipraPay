@@ -1838,6 +1838,16 @@
             if($status == "completed"){
                 $final_source_info = '--';
 
+                // Get existing source_info from the transaction
+                $existingSourceInfo = [];
+                $rawExisting = $response_transaciton['response'][0]['source_info'] ?? '';
+                if (!empty($rawExisting) && $rawExisting !== '--') {
+                    $decoded = json_decode($rawExisting, true);
+                    if (is_array($decoded)) {
+                        $existingSourceInfo = $decoded;
+                    }
+                }
+
                 if (is_array($source_info) && !empty($source_info)) {
                     $valid = true;
 
@@ -1853,8 +1863,13 @@
                     }
 
                     if ($valid) {
-                        $final_source_info = json_encode($source_info, JSON_UNESCAPED_UNICODE);
+                        // Merge: existing custom fields first, then gateway info appended
+                        $merged = array_merge($existingSourceInfo, $source_info);
+                        $final_source_info = json_encode($merged, JSON_UNESCAPED_UNICODE);
                     }
+                } elseif (!empty($existingSourceInfo)) {
+                    // No new source_info from gateway, but keep existing custom fields
+                    $final_source_info = json_encode($existingSourceInfo, JSON_UNESCAPED_UNICODE);
                 }
 
                 $params = [ ':gateway_id' => $gateway_id, ':brand_id' => $response_transaciton['response'][0]['brand_id'] ];
@@ -2081,7 +2096,38 @@
         $pdf->SetAutoPageBreak(true, 15);
 
         if (!empty($brand['logo'])) {
-            $pdf->Image($brand['logo'], 10, 10, 35);
+            $logo = $brand['logo'];
+            $tempLogo = null;
+
+            $ext = strtolower(pathinfo(parse_url($logo, PHP_URL_PATH), PATHINFO_EXTENSION));
+
+            if ($ext === 'webp') {
+                if (function_exists('imagecreatefromwebp')) {
+                    $webpImage = @imagecreatefromwebp($logo);
+                    if ($webpImage) {
+                        $tempLogo = tempnam(sys_get_temp_dir(), 'receipt_logo_') . '.png';
+                        imagepng($webpImage, $tempLogo);
+                        imagedestroy($webpImage);
+                        $logo = $tempLogo;
+                    } else {
+                        $logo = null;
+                    }
+                } else {
+                    $logo = null;
+                }
+            }
+
+            if (!empty($logo)) {
+                try {
+                    $pdf->Image($logo, 10, 10, 35);
+                } catch (Exception $e) {
+
+                }
+            }
+
+            if ($tempLogo && file_exists($tempLogo)) {
+                unlink($tempLogo);
+            }
         }
 
         $pdf->SetFont('Arial', 'B', 14);
@@ -3080,8 +3126,8 @@
 
                 echo '<div class="mb-3">';
 
-                // Show label for all except checkbox (we put label inside input for checkbox)
-                if ($type == 'checkbox') {
+                // Show label for all types EXCEPT checkbox (checkbox renders label per-option inline)
+                if ($type !== 'checkbox') {
                     echo "<label class='form-label' for='{$name}'>{$label}";
                     if ($required) echo ' <span class="text-danger">*</span>';
                     echo "</label>";
@@ -3098,8 +3144,9 @@
                         break;
 
                     case 'select':
-                        echo "<select name='{$name}' id='{$name}' class='form-control' {$required}>";
+                        echo "<select name='{$name}' id='{$name}' class='form-select' {$required}>";
                         if (!empty($field['options'])) {
+                            echo "<option value='' disabled selected>Select {$label}</option>";
                             foreach ($field['options'] as $opt) {
                                 echo "<option value='".htmlspecialchars($opt)."'>".htmlspecialchars($opt)."</option>";
                             }
@@ -3108,21 +3155,24 @@
                         break;
 
                     case 'checkbox':
+                        // Group label rendered above all options
+                        echo "<label class='form-label'>{$label}";
+                        if ($required) echo ' <span class="text-danger">*</span>';
+                        echo "</label>";
+
                         if (!empty($field['options'])) {
                             foreach ($field['options'] as $opt) {
-
                                 $optValue = htmlspecialchars($opt);
                                 $optId    = $name . '_' . preg_replace('/\s+/', '_', strtolower($opt));
 
                                 echo "<div class='form-check'>";
                                 echo "<input 
-                                        type='checkbox'
-                                        name='{$name}[]'
-                                        id='{$optId}'
-                                        class='form-check-input'
-                                        value='{$optValue}'
-                                        {$required}
-                                    >";
+                            type='checkbox'
+                            name='{$name}[]'
+                            id='{$optId}'
+                            class='form-check-input'
+                            value='{$optValue}'
+                        >";
                                 echo "<label class='form-check-label' for='{$optId}'>{$optValue}</label>";
                                 echo "</div>";
                             }
@@ -3155,7 +3205,6 @@
                         break;
                 }
 
-                // Optional context hint (for invoice, payment_link, etc.)
                 if (!empty($field['hint'])) {
                     echo "<small class='form-text text-muted'>{$field['hint']}</small>";
                 }
