@@ -103,7 +103,7 @@ Many regions lack modern payment infrastructure:
 - Manual SMS-based verification  
 - Slow reconciliation processes  
 
-PipraPay solves this by:
+Pipra-Pay solves this by:
 
 - Automating payment verification  
 - Turning SMS payments into programmable events  
