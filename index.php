@@ -336,6 +336,19 @@
 
                         $apiKey = getAuthorizationHeader();
 
+                        // Rate limit API requests (60 req/min per IP).
+                        $clientIp = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                        if (!checkRateLimit('api:' . $clientIp, 60, 60)) {
+                            http_response_code(429);
+                            echo json_encode([
+                                'error' => [
+                                    'code'    => 'RATE_LIMITED',
+                                    'message' => 'Too many requests. Please try again later.'
+                                ]
+                            ]);
+                            exit;
+                        }
+
                         $params = [ ':api_key' => $apiKey ];
 
                         $response_api = json_decode(getData($db_prefix.'api','WHERE api_key = :api_key AND status = "active"', '* FROM', $params),true);
@@ -1096,8 +1109,8 @@
                                         'customer' => [
                                             'id'     => $customer['id']     ?? null,
                                             'name'   => $customer['name']   ?? null,
-                                            'email'  => $customer['email']  ?? null,
-                                            'mobile' => $customer['mobile'] ?? null,
+                                            'email'  => null,
+                                            'mobile' => null,
                                         ],
                                         'payment_method'        => $gateway,
                                         'currency'        => $transactionRow['currency'],
