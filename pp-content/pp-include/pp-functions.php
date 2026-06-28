@@ -65,18 +65,58 @@
     function getAuthorizationHeader() {
         if (function_exists('getallheaders')) {
             $headers = getallheaders();
+            // Check new format (MHS-PIPRAPAY-API-KEY) first.
             if (isset($headers['MHS-PIPRAPAY-API-KEY'])) {
                 return trim($headers['MHS-PIPRAPAY-API-KEY']);
             }
+            // Check old format (mh-piprapay-api-key) for backward compatibility.
+            foreach ($headers as $key => $value) {
+                if (strcasecmp($key, 'mh-piprapay-api-key') === 0) {
+                    return trim($value);
+                }
+            }
         }
-    
+
         foreach ($_SERVER as $key => $value) {
-            if (stripos($key, 'HTTP_MHS_PIPRAPAY_API_KEY') !== false) {
+            $key_lower = strtolower($key);
+            if ($key_lower === 'http_mhs_piprapay_api_key' || $key_lower === 'http_mh_piprapay_api_key') {
                 return trim($value);
             }
         }
-    
+
         return null;
+    }
+
+    /**
+     * Simple file-based rate limiting for API endpoints.
+     *
+     * @param string $key     Identifier (e.g., client IP + endpoint).
+     * @param int    $limit   Max requests per window.
+     * @param int    $window  Window size in seconds.
+     * @return bool True if allowed, false if rate limited.
+     */
+    function checkRateLimit($key, $limit = 60, $window = 60) {
+        $cacheDir = sys_get_temp_dir() . '/pp-rate-limit';
+        if (!is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0755, true);
+        }
+
+        $file = $cacheDir . '/' . md5($key) . '.json';
+        $now = time();
+        $data = ['count' => 0, 'reset' => $now + $window];
+
+        if (file_exists($file)) {
+            $data = json_decode(file_get_contents($file), true) ?: $data;
+        }
+
+        if ($now >= $data['reset']) {
+            $data = ['count' => 0, 'reset' => $now + $window];
+        }
+
+        $data['count']++;
+        @file_put_contents($file, json_encode($data));
+
+        return $data['count'] <= $limit;
     }
 
     function connectDatabase() {
@@ -234,10 +274,11 @@
     }
 
     function escape_string($value) {
-        /*$conn = connectDatabase();
-        $value = mysqli_real_escape_string($conn, $value);*/
-
-        return $value;
+        $conn = connectDatabase();
+        // PDO::quote() adds surrounding quotes; callers embed the value
+        // inside already-quoted SQL strings, so strip the outer quotes.
+        $quoted = $conn->quote((string) $value);
+        return $quoted !== false ? substr($quoted, 1, -1) : addslashes((string) $value);
     }   
 
     function getData($tableName, $coloum_name, $type = "* FROM", $params = []) {
@@ -407,7 +448,7 @@
 
         $id = '';
         for ($i = 0; $i < $length; $i++) {
-            $id .= mt_rand(0, 9);
+            $id .= random_int(0, 9);
         }
 
         return $id;
