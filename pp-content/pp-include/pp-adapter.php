@@ -20,9 +20,9 @@
     $requirements = [
         [
             'name'     => 'PHP Version',
-            'required' => '8.1.x - 8.3.x',
+            'required' => '8.1.x - 8.4.x',
             'current'  => PHP_VERSION,
-            'check'    => version_compare(PHP_VERSION, '8.1.0', '>=') && version_compare(PHP_VERSION, '8.4.0', '<')
+            'check'    => version_compare(PHP_VERSION, '8.1.0', '>=') && version_compare(PHP_VERSION, '8.5.0', '<')
         ],
         [
             'name'     => 'cURL',
@@ -6837,7 +6837,6 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
                             $all_transactions = [];
 
                             $jobs = [];
-                            $failed = [];
 
                             foreach ($selected_ids as $id) {
                                 $itemID = escape_string($id);
@@ -6865,74 +6864,12 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
 
                                     if($actionID == "refunded"){
                                         if (hasPermission(json_decode($global_response_permission['response'][0]['permission'], true), 'transaction', 'refund', $global_user_response['response'][0]['role'])) {
-                                            $transactionRow = $response_brand['response'][0];
-
-                                            if (($transactionRow['status'] ?? '') !== 'completed') {
-                                                $failed[] = [
-                                                    'ref' => $itemID,
-                                                    'message' => 'Only completed transactions can be refunded.'
-                                                ];
-                                                continue;
-                                            }
-
-                                            $refundResult = null;
-                                            $params = [ ':gateway_id' => $transactionRow['gateway_id'], ':brand_id' => $transactionRow['brand_id'] ];
-                                            $response_gateway_info = json_decode(getData($db_prefix.'gateways','WHERE gateway_id = :gateway_id AND brand_id = :brand_id', '* FROM', $params),true);
-                                            $gateway_slug = $response_gateway_info['response'][0]['slug'] ?? '';
-
-                                            if ($gateway_slug === 'bkash-api-tokenized') {
-                                                $refundPayload = [
-                                                    'amount' => money_round($transactionRow['local_net_amount']),
-                                                    'sku' => $transactionRow['ref'],
-                                                    'reason' => 'Admin refund'
-                                                ];
-
-                                                $refundResult = pp_bkash_tokenized_refund($transactionRow, $refundPayload);
-
-                                                if (empty($refundResult['status'])) {
-                                                    $failed[] = [
-                                                        'ref' => $itemID,
-                                                        'message' => $refundResult['message'] ?? 'Refund failed.'
-                                                    ];
-                                                    continue;
-                                                }
-                                            }
-
-                                            $source_info = json_decode($transactionRow['source_info'], true) ?: [];
-                                            $source_info_changed = false;
-
-                                            if (!empty($refundResult['data'])) {
-                                                $refundTrxId = $refundResult['data']['refundTrxId'] ?? '';
-                                                $refundAmount = $refundResult['data']['refundAmount'] ?? '';
-                                                $completedTime = $refundResult['data']['completedTime'] ?? '';
-
-                                                if ($refundTrxId !== '') {
-                                                    $source_info[] = ['label' => 'Refund TrxID', 'value' => $refundTrxId];
-                                                    $source_info_changed = true;
-                                                }
-                                                if ($refundAmount !== '') {
-                                                    $source_info[] = ['label' => 'Refund Amount', 'value' => $refundAmount];
-                                                    $source_info_changed = true;
-                                                }
-                                                if ($completedTime !== '') {
-                                                    $source_info[] = ['label' => 'Refund Time', 'value' => $completedTime];
-                                                    $source_info_changed = true;
-                                                }
-                                            }
-
                                             $columns = ['status', 'updated_date'];
                                             $values = ['refunded', getCurrentDatetime('Y-m-d H:i:s')];
 
-                                            if ($source_info_changed) {
-                                                $columns[] = 'source_info';
-                                                $values[] = json_encode($source_info, JSON_UNESCAPED_UNICODE);
-                                                $response_brand['response'][0]['source_info'] = json_encode($source_info, JSON_UNESCAPED_UNICODE);
-                                            }
-
                                             $condition = "ref = '".$itemID."'"; 
+                                            
                                             updateData($db_prefix.'transaction', $columns, $values, $condition);
-
-                                            $response_brand['response'][0]['status'] = 'refunded';
                                         }
                                     }
 
@@ -7049,22 +6986,7 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
                                 do_action('transactions.updated', $all_transactions);
                             }
 
-                            if (!empty($failed)) {
-                                $firstFail = $failed[0];
-                                $failCount = count($failed);
-                                $message = $failCount > 1
-                                    ? $firstFail['message'].' (and '.($failCount - 1).' more)'
-                                    : $firstFail['message'];
-
-                                echo json_encode([
-                                    'status' => 'false',
-                                    'title' => 'Refund Failed',
-                                    'message' => $message,
-                                    'csrf_token' => $new_csrf_token
-                                ]);
-                            }else{
-                                echo json_encode(['status' => 'true', 'title' => 'Transactions '.$actionsID, 'message' => 'The selected transactions have been '.$actionsID.' successfully.', 'csrf_token' => $new_csrf_token]);
-                            }
+                            echo json_encode(['status' => 'true', 'title' => 'Transactions '.$actionsID, 'message' => 'The selected transactions have been '.$actionsID.' successfully.', 'csrf_token' => $new_csrf_token]);
                         } else {
                             echo json_encode(['status' => 'false', 'title' => 'Transactions Failed', 'message' => 'No transactions selected.' , 'csrf_token' => $new_csrf_token]);
                         }
