@@ -1,7 +1,7 @@
 <?php
-    use Xenon\NagadApi\Base;
-    use Xenon\NagadApi\Exception\NagadPaymentException;
-    use Xenon\NagadApi\Helper;
+/**
+ * Nagad Merchant API Gateway - Direct API Implementation
+ */
 
     class NagadMerchantApiGateway
     {
@@ -31,24 +31,22 @@
         {
             return [
                 [
-                    'name'  => 'app_account',
-                    'label' => 'App Account',
-                    'type'  => 'text',
-                ],
-                [
                     'name'  => 'merchant_id',
                     'label' => 'Merchant ID',
                     'type'  => 'text',
+                    'required' => true,
                 ],
                 [
                     'name'  => 'private_key',
                     'label' => 'Private Key',
                     'type'  => 'text',
+                    'required' => true,
                 ],
                 [
                     'name'  => 'public_key',
                     'label' => 'Public Key',
                     'type'  => 'text',
+                    'required' => true,
                 ],
                 [
                     'name'  => 'mode',
@@ -62,108 +60,397 @@
                     'required' => true,
                     'multiple' => false,
                 ],
+                [
+                    'name'  => 'invoice_prefix',
+                    'label' => 'Invoice Prefix',
+                    'type'  => 'text',
+                    'value' => 'INV',
+                    'required' => false,
+                    'hint' => 'Example: INV (max 15)',
+                ],
             ];
         }
 
         function process_payment($data = []){
-            if(file_exists(__DIR__ . '/vendor/autoload.php')){
-               require_once __DIR__ . '/vendor/autoload.php';
-            }else{
-                echo '<div class="alert alert-danger" role="alert">Nagad SDK not found</div><style>.loading-123412341234{display: none;}</style>';
+            // Validate input data
+            if (!is_array($data) || empty($data)) {
+                echo '<div class="alert alert-danger" role="alert">Invalid payment data</div><style>.loading-123412341234{display: none;}</style>';
                 exit();
             }
 
             echo '<center><div class="spinner-border text-primary m-3 loading-123412341234" role="status"><span class="visually-hidden">Loading...</span></div></center>';
 
-            $config = [
-                'NAGAD_APP_ENV' => ($data['options']['mode'] ?? 'sandbox') === 'sandbox' ? 'development' : 'production',
-                'NAGAD_APP_LOG' => '1',
-                'NAGAD_APP_ACCOUNT' => $data['options']['app_account'] ?? '', //demo
-                'NAGAD_APP_MERCHANTID' => $data['options']['merchant_id'] ?? '', //demo
-                'NAGAD_APP_MERCHANT_PRIVATE_KEY' => $data['options']['private_key'] ?? '',
-                'NAGAD_APP_MERCHANT_PG_PUBLIC_KEY' => $data['options']['public_key'] ?? '',
-                'NAGAD_APP_TIMEZONE' => 'Asia/Dhaka',
-            ];
+            // Get and validate settings
+            $merchant_id  = trim($data['options']['merchant_id'] ?? '');
+            $private_key  = trim($data['options']['private_key'] ?? '');
+            $public_key   = trim($data['options']['public_key'] ?? '');
+            $mode         = in_array($data['options']['mode'] ?? 'live', ['live', 'sandbox']) ? $data['options']['mode'] : 'live';
+            $prefix       = preg_replace('/[^A-Z0-9]/', '', strtoupper($data['options']['invoice_prefix'] ?? 'INV'));
+            $ref          = trim($data['transaction']['ref'] ?? '');
+            $amount       = floatval($data['transaction']['local_net_amount'] ?? 0);
+            $callback_url = filter_var(pp_callback_url(), FILTER_SANITIZE_URL);
+            $site_url     = filter_var(pp_site_url(), FILTER_SANITIZE_URL);
 
+            // Validate required fields
+            if (empty($merchant_id) || empty($private_key) || empty($public_key)) {
+                echo '<div class="alert alert-danger" role="alert">Gateway not configured properly. Missing Merchant ID, Private Key or Public Key.</div><style>.loading-123412341234{display: none;}</style>';
+                exit();
+            }
 
-            $url = pp_site_url();
+            // Validate amount
+            if ($amount <= 0) {
+                echo '<div class="alert alert-danger" role="alert">Invalid payment amount</div><style>.loading-123412341234{display: none;}</style>';
+                exit();
+            }
 
-            // First, get the query string after '?'
-            $parts = explode('?', $url, 2);
+            // Nagad API Base URL
+            $baseUrl = ($mode === 'sandbox') 
+                ? 'http://sandbox.mynagad.com:10080/remote-payment-gateway-1.0/api/dfs/'
+                : 'https://api.mynagad.com/api/dfs/';
+
+            // Check if this is callback (has payment_ref_id and status)
+            $parts = explode('?', $site_url, 2);
             $queryString = isset($parts[1]) ? $parts[1] : '';
-
-            // Sometimes there is a '/?' in the middle, replace it with '&' to normalize
             $queryString = str_replace('/?', '&', $queryString);
-
-            // Parse the query parameters
             parse_str($queryString, $params);
 
-            // Now you can access the values
-            $merchant = $params['merchant'] ?? '';
-            $order_id = $params['order_id'] ?? '';
-            $status = $params['status'] ?? '';
+            $payment_ref_id = $params['payment_ref_id'] ?? '';
+            $status         = $params['status'] ?? '';
 
-            if(!empty($merchant) && !empty($order_id) && !empty($status)){
-                $responseArray = Helper::successResponse(pp_site_url());
+            // Handle Callback/Return
+            if (!empty($payment_ref_id) && !empty($status)) {
+                try {
+                    $this->handleCallback($data, $baseUrl, $merchant_id, $public_key, $private_key, $payment_ref_id, $status);
+                } catch (Exception $e) {
+                    echo '<div class="alert alert-danger" role="alert">Callback Error: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div><style>.loading-123412341234{display: none;}</style>';
+                }
+                return;
+            }
 
-                if($responseArray['status'] == 'Aborted'){
-                    echo '<div class="alert alert-danger" role="alert">Transaction Canceled</div><style>.loading-123412341234{display: none;}</style>';
-                }else{
-                    if (isset($responseArray['payment_ref_id'], $responseArray['status']) && $responseArray['status'] == "Success") {
-                        $helper = new Helper($config);
-                        try {
-                            $response = $helper->verifyPayment($responseArray['payment_ref_id']);
+            // Initiate Payment
+            try {
+                $this->initiatePayment($ref, $amount, $prefix, $baseUrl, $merchant_id, $public_key, $private_key, $callback_url);
+            } catch (Exception $e) {
+                echo '<div class="alert alert-danger" role="alert">Payment Error: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div><style>.loading-123412341234{display: none;}</style>';
+                exit();
+            }
+        }
 
-                            $buffer = json_decode($response, true);
-                            
-                            if (isset($buffer['status']) && $buffer['status'] =='Success'){
-                                $transaction_id = (get_env('nagad-merchant-api-pp_'.$buffer['orderId']) == "") ? 0 : get_env('nagad-merchant-api-pp_'.$buffer['orderId']);
+        /**
+         * Initiate Payment Request
+         */
+        private function initiatePayment($ref, $amount, $prefix, $baseUrl, $merchantId, $publicKey, $privateKey, $callbackUrl)
+        {
+            // Order ID must be max 20 chars for Nagad
+            $short_ref = substr($ref, -8);
+            $random = substr(time(), -4);
+            $invoice_id = $prefix . $short_ref . $random;
+            
+            if (strlen($invoice_id) > 20) {
+                $invoice_id = substr($invoice_id, 0, 20);
+            }
 
-                                if($transaction_id == $data['transaction']['ref']){
-                                    $moreinfo = [
-                                        [
-                                            'label' => 'Client Mobile Number',
-                                            'value' => $buffer['clientMobileNo']
-                                        ],
-                                        [
-                                            'label' => 'Service Type',
-                                            'value' => $buffer['serviceType']
-                                        ]
-                                    ];
+            set_env('nagad_pp_' . $invoice_id, $ref);
 
-                                    pp_set_transaction_status($data['transaction']['ref'], 'completed', $data['gateway']['gateway_id'], $buffer['issuerPaymentRefNo'], $moreinfo);
+            date_default_timezone_set('Asia/Dhaka');
+            $DateTime = date('YmdHis');
+            $random   = $this->generateRandomString();
 
-                                    echo "<script>location.reload();</script>";
-                                }else{
-                                    echo '<div class="alert alert-danger" role="alert">Invalid Transaction</div><style>.loading-123412341234{display: none;}</style>';
-                                }
-                            }else{
-                                echo '<div class="alert alert-danger" role="alert">Transaction '.$buffer['status'].'</div><style>.loading-123412341234{display: none;}</style>';
-                            }
-                        } catch (Exception $e) {
-                            echo '<div class="alert alert-danger" role="alert">'.$e->getMessage().'</div><style>.loading-123412341234{display: none;}</style>';
-                        }
-                    }else{
-                        echo '<div class="alert alert-danger" role="alert">Transaction '.$responseArray['status'].'</div><style>.loading-123412341234{display: none;}</style>';
+            $SensitiveData = [
+                'merchantId' => $merchantId,
+                'datetime'   => $DateTime,
+                'orderId'    => $invoice_id,
+                'challenge'  => $random
+            ];
+
+            $PostData = [
+                'dateTime'      => $DateTime,
+                'sensitiveData' => $this->encryptData(json_encode($SensitiveData), $publicKey),
+                'signature'     => $this->generateSignature(json_encode($SensitiveData), $privateKey)
+            ];
+
+            $PostURL = $baseUrl . 'check-out/initialize/' . $merchantId . '/' . $invoice_id;
+            $Result_Data = $this->httpPost($PostURL, $PostData);
+
+            if (!isset($Result_Data['sensitiveData']) || !isset($Result_Data['signature'])) {
+                $error = $Result_Data['message'] ?? 'Failed to initialize payment';
+                echo '<div class="alert alert-danger" role="alert">' . $error . '</div><style>.loading-123412341234{display: none;}</style>';
+                exit();
+            }
+
+            $PlainResponse = json_decode($this->decryptData($Result_Data['sensitiveData'], $privateKey), true);
+
+            if (!isset($PlainResponse['paymentReferenceId']) || !isset($PlainResponse['challenge'])) {
+                echo '<div class="alert alert-danger" role="alert">Invalid response from Nagad</div><style>.loading-123412341234{display: none;}</style>';
+                exit();
+            }
+
+            $paymentReferenceId = $PlainResponse['paymentReferenceId'];
+            $randomServer       = $PlainResponse['challenge'];
+
+            $SensitiveDataOrder = [
+                'merchantId'   => $merchantId,
+                'orderId'      => $invoice_id,
+                'currencyCode' => '050',
+                'amount'       => (string) round($amount),
+                'challenge'    => $randomServer
+            ];
+
+            $PostDataOrder = [
+                'sensitiveData'         => $this->encryptData(json_encode($SensitiveDataOrder), $publicKey),
+                'signature'             => $this->generateSignature(json_encode($SensitiveDataOrder), $privateKey),
+                'merchantCallbackURL'   => $callbackUrl,
+                'additionalMerchantInfo' => json_decode('{"callback": "' . $callbackUrl . '"}')
+            ];
+
+            $OrderSubmitUrl = $baseUrl . 'check-out/complete/' . $paymentReferenceId;
+            $Result_Order   = $this->httpPost($OrderSubmitUrl, $PostDataOrder);
+
+            if (isset($Result_Order['status']) && $Result_Order['status'] === 'Success') {
+                $redirectUrl = $Result_Order['callBackUrl'];
+                echo '<script>window.location.href = "' . htmlspecialchars($redirectUrl) . '";</script>';
+                echo '<div class="text-center mt-3"><a href="' . htmlspecialchars($redirectUrl) . '" class="btn btn-primary">Click here if not redirected</a></div>';
+                exit;
+            }
+
+            $error = $Result_Order['message'] ?? 'Failed to complete order';
+            echo '<div class="alert alert-danger" role="alert">' . $error . '</div><style>.loading-123412341234{display: none;}</style>';
+            exit();
+        }
+
+        /**
+         * Handle Callback/Return
+         */
+        private function handleCallback($data, $baseUrl, $merchantId, $publicKey, $privateKey, $paymentRefId, $status)
+        {
+            // Validate callback parameters
+            $paymentRefId = preg_replace('/[^A-Za-z0-9]/', '', $paymentRefId);
+            $status = preg_replace('/[^A-Za-z]/', '', $status);
+            
+            if ($status === 'Aborted') {
+                echo '<div class="alert alert-danger" role="alert">Transaction Canceled</div><style>.loading-123412341234{display: none;}</style>';
+                return;
+            }
+
+            if ($status !== 'Success' && isset($_REQUEST['message'])) {
+                $message = htmlspecialchars($_REQUEST['message'], ENT_QUOTES, 'UTF-8');
+                echo '<div class="alert alert-danger" role="alert">' . $message . '</div><style>.loading-123412341234{display: none;}</style>';
+                return;
+            }
+
+            $verifyUrl = $baseUrl . 'verify/payment/' . urlencode($paymentRefId);
+            $verifyResult = $this->httpGet($verifyUrl);
+            $result = json_decode($verifyResult, true);
+
+            if (!isset($result['status']) || $result['status'] !== 'Success') {
+                $error = $result['message'] ?? 'Payment verification failed';
+                echo '<div class="alert alert-danger" role="alert">' . htmlspecialchars($error) . '</div><style>.loading-123412341234{display: none;}</style>';
+                return;
+            }
+
+            $order_id = preg_replace('/[^A-Za-z0-9]/', '', $result['orderId'] ?? '');
+            $transaction_ref = 0;
+
+            if (get_env('nagad_pp_' . $order_id) !== '') {
+                $transaction_ref = get_env('nagad_pp_' . $order_id);
+            }
+
+            if (empty($transaction_ref)) {
+                $transaction_ref = $data['transaction']['ref'];
+            }
+
+            // Verify merchant ID matches
+            if ($result['merchantId'] !== $merchantId) {
+                echo '<div class="alert alert-danger" role="alert">Invalid Merchant</div><style>.loading-123412341234{display: none;}</style>';
+                return;
+            }
+
+            // Sanitize response data
+            $moreinfo = [
+                ['label' => 'Client Mobile', 'value' => preg_replace('/[^0-9]/', '', $result['clientMobileNo'] ?? 'N/A')],
+                ['label' => 'Service Type', 'value' => htmlspecialchars($result['serviceType'] ?? 'N/A', ENT_QUOTES, 'UTF-8')],
+                ['label' => 'Issuer Ref', 'value' => preg_replace('/[^A-Za-z0-9]/', '', $result['issuerPaymentRefNo'] ?? 'N/A')],
+            ];
+
+            pp_set_transaction_status($data['transaction']['ref'], 'completed', $data['gateway']['gateway_id'], $paymentRefId, $moreinfo);
+
+            global $site_url, $path_payment;
+            $redirectUrl = rtrim($site_url, '/') . '/' . trim($path_payment, '/') . '/' . $data['transaction']['ref'];
+            echo '<script>window.location.href = "' . htmlspecialchars($redirectUrl, ENT_QUOTES, 'UTF-8') . '";</script>';
+            echo '<div class="text-center mt-3"><a href="' . htmlspecialchars($redirectUrl, ENT_QUOTES, 'UTF-8') . '" class="btn btn-primary">Click here if not redirected</a></div>';
+        }
+
+        // ============== HELPER METHODS ==============
+
+        private function generateRandomString($length = 40)
+        {
+            $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            $randomString = '';
+            $maxIndex = strlen($characters) - 1;
+            for ($i = 0; $i < $length; $i++) {
+                $randomString .= $characters[random_int(0, $maxIndex)];
+            }
+            return $randomString;
+        }
+
+        private function formatKey($key, $type)
+        {
+            // Remove existing headers/footers and whitespace
+            $key = preg_replace('/-----BEGIN (PUBLIC KEY|RSA PRIVATE KEY)-----/', '', $key);
+            $key = preg_replace('/-----END (PUBLIC KEY|RSA PRIVATE KEY)-----/', '', $key);
+            $key = preg_replace('/\s+/', '', $key);
+            
+            // Add proper headers based on type
+            if ($type === 'public') {
+                return "-----BEGIN PUBLIC KEY-----\n" . chunk_split($key, 64, "\n") . "-----END PUBLIC KEY-----";
+            } else {
+                return "-----BEGIN RSA PRIVATE KEY-----\n" . chunk_split($key, 64, "\n") . "-----END RSA PRIVATE KEY-----";
+            }
+        }
+
+        private function encryptData($data, $publicKey)
+        {
+            $key = $this->formatKey($publicKey, 'public');
+            $resource = openssl_get_publickey($key);
+            if (!$resource) {
+                throw new Exception('Invalid public key');
+            }
+            openssl_public_encrypt($data, $encrypted, $resource);
+            return base64_encode($encrypted);
+        }
+
+        private function generateSignature($data, $privateKey)
+        {
+            $key = $this->formatKey($privateKey, 'private');
+            $resource = openssl_get_privatekey($key);
+            if (!$resource) {
+                throw new Exception('Invalid private key');
+            }
+            openssl_sign($data, $signature, $resource, OPENSSL_ALGO_SHA256);
+            return base64_encode($signature);
+        }
+
+        private function decryptData($data, $privateKey)
+        {
+            $key = $this->formatKey($privateKey, 'private');
+            $resource = openssl_get_privatekey($key);
+            if (!$resource) {
+                throw new Exception('Invalid private key for decrypt');
+            }
+            openssl_private_decrypt(base64_decode($data), $decrypted, $resource);
+            return $decrypted;
+        }
+
+        private function httpPost($url, $data)
+        {
+            if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                throw new Exception('Invalid URL');
+            }
+            
+            $ch = curl_init($url);
+            if (!$ch) {
+                throw new Exception('Failed to initialize cURL');
+            }
+            
+            $payload = json_encode($data);
+            if ($payload === false) {
+                curl_close($ch);
+                throw new Exception('Failed to encode JSON data');
+            }
+            
+            $headers = [
+                'Content-Type: application/json',
+                'X-KM-Api-Version: v-0.2.0',
+                'X-KM-IP-V4: ' . $this->getClientIp(),
+                'X-KM-Client-Type: PC_WEB'
+            ];
+
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+
+            $result = curl_exec($ch);
+            if ($result === false) {
+                $error = curl_error($ch);
+                curl_close($ch);
+                throw new Exception('cURL Error: ' . $error);
+            }
+            
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode !== 200) {
+                throw new Exception('HTTP Error: ' . $httpCode);
+            }
+
+            $decoded = json_decode($result, true);
+            if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception('Invalid JSON response');
+            }
+            
+            return $decoded ?: [];
+        }
+
+        private function httpGet($url)
+        {
+            if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                throw new Exception('Invalid URL');
+            }
+            
+            $ch = curl_init($url);
+            if (!$ch) {
+                throw new Exception('Failed to initialize cURL');
+            }
+            
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+            
+            $result = curl_exec($ch);
+            if ($result === false) {
+                $error = curl_error($ch);
+                curl_close($ch);
+                throw new Exception('cURL Error: ' . $error);
+            }
+            
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode !== 200) {
+                throw new Exception('HTTP Error: ' . $httpCode);
+            }
+            
+            return $result;
+        }
+
+        private function getClientIp()
+        {
+            $ipHeaders = [
+                'HTTP_CLIENT_IP',
+                'HTTP_X_FORWARDED_FOR',
+                'HTTP_X_FORWARDED',
+                'HTTP_FORWARDED_FOR',
+                'HTTP_FORWARDED',
+                'REMOTE_ADDR'
+            ];
+            
+            foreach ($ipHeaders as $header) {
+                $ip = $_SERVER[$header] ?? '';
+                if (!empty($ip)) {
+                    // Validate IP address
+                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                        return $ip;
                     }
                 }
-            }else{
-                try {
-                    $sess = rand();
-
-                    set_env('nagad-merchant-api-pp_'.$sess, $data['transaction']['ref']);
-                    
-                    $nagad = new Base($config, [
-                        'amount' => (string) round($data['transaction']['local_net_amount']),
-                        'invoice' => $sess,
-                        'merchantCallback' => pp_callback_url(),
-                    ]);
-            
-                    $status = $nagad->payNow($nagad);
-                } catch (\Xenon\NagadApi\Exception\ExceptionHandler $e) {
-                    echo '<div class="alert alert-danger" role="alert">'.$e->getMessage().'</div><style>.loading-123412341234{display: none;}</style>';
-                    exit();
-                }
             }
+            
+            return '127.0.0.1'; // Default fallback
         }
     }
