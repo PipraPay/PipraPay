@@ -229,7 +229,8 @@
             <div class="row g-3">
               <div class="col-lg-12">
                 <label class="form-label">Gateway <span class="text-danger">*</span></label>
-                <select class="js-select" name="gateway" data-search="true" data-remove="true" data-placeholder="Select gateway" required>
+                <select class="form-select" name="gateway_module" required>
+                    <option value="">Select Payment Module</option>
                     <?php
                         $gateways = [];
 
@@ -642,7 +643,7 @@
         const modal = document.getElementById("modal-createItem");
 
         // Set input values by name
-        var gateway = modal.querySelector('select[name="gateway"]').value;
+        var gateway = modal.querySelector('select[name="gateway_module"]').value;
 
         if(gateway == ""){
             createToast({
