@@ -9,7 +9,7 @@
             pp_set_lang($_GET['lang']);
 ?>
             <script>
-                location.href = '<?php echo pp_checkout_address().'?gateway='.$_GET['gateway'];?>';
+                location.href = '<?php echo pp_checkout_address().'?gateway='.urlencode($_GET['gateway']);?>';
             </script>
 <?php
             exit();
@@ -401,7 +401,7 @@
             var language = document.querySelector("#model-languages").value;
 
             if(language !== ""){
-                location.href = '<?php echo pp_checkout_address().'?gateway='.$_GET['gateway'];?>&lang='+language;
+                location.href = '<?php echo pp_checkout_address().'?gateway='.urlencode($_GET['gateway']);?>&lang='+language;
             }
         }
 
