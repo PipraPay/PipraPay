@@ -163,6 +163,16 @@
                     ?>
                 </p>
 
+                <?php
+                    $redirectUrl = $data['transaction']['redirect_url'] ?? '--';
+                    $shouldRedirect = $status === 'completed' && $redirectUrl !== '' && $redirectUrl !== '--';
+                    if ($shouldRedirect) {
+                ?>
+                    <p class="text-muted mb-4">
+                        Redirecting to the website in <strong id="redirect-countdown">5</strong> seconds...
+                    </p>
+                <?php } ?>
+
                 <div class="table-responsive mb-4 <?php echo ($status == "canceled") ? 'd-none' : ''?>">
                     <table class="table table-bordered">
                         <tbody>
@@ -199,7 +209,7 @@
                 </div>
 
                 <div class="mb-3">
-                    <a href="<?php echo $data['transaction']['return_url']?>" class="btn btn-primary <?php echo ($data['transaction']['return_url'] == "--" || $data['transaction']['return_url'] == "") ? 'd-none' : ''?>"><?php echo $data['lang']['go_to_site']?></a>
+                    <a href="<?php echo htmlspecialchars($redirectUrl, ENT_QUOTES, 'UTF-8')?>" class="btn btn-primary <?php echo !$shouldRedirect ? 'd-none' : ''?>"><?php echo $data['lang']['go_to_site']?></a>
                     <?php
                         if($status == "completed" || $status == "pending" || $status == "refunded"){
                     ?>
@@ -208,6 +218,26 @@
                         }
                     ?>
                 </div>
+
+                <?php if ($shouldRedirect && !isset($_GET['receipt'])) { ?>
+                    <script data-cfasync="false">
+                        document.addEventListener('DOMContentLoaded', function () {
+                            let secondsRemaining = 5;
+                            const countdown = document.getElementById('redirect-countdown');
+                            const redirectUrl = <?php echo json_encode($redirectUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+
+                            const timer = window.setInterval(function () {
+                                secondsRemaining -= 1;
+                                if (countdown) countdown.textContent = secondsRemaining;
+
+                                if (secondsRemaining <= 0) {
+                                    window.clearInterval(timer);
+                                    window.location.assign(redirectUrl);
+                                }
+                            }, 1000);
+                        });
+                    </script>
+                <?php } ?>
 
             </div>
         </div>

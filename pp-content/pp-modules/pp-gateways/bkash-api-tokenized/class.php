@@ -66,7 +66,7 @@
                         'on'  => 'On',
                         'off' => 'Off',
                     ],
-                    'value' => 'on',
+                    'value' => 'off',
                     'required' => false,
                     'multiple' => false,
                 ],

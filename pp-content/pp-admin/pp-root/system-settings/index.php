@@ -51,6 +51,27 @@
                         </div>
                     </div>
 
+                    <div class="col-md-4 <?= hasPermission(json_decode($global_response_permission['response'][0]['permission'], true), 'system_settings', 'manage_email', $global_user_response['response'][0]['role']) ? '' : 'd-none' ?>" onclick="load_content('System Settings','<?php echo $site_url.$path_admin ?>/system-settings/email-settings','nav-item-system-settings')"  style="cursor: pointer;">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center">
+                                    <!-- Icon -->
+                                    <div class="bg-primary bg-opacity-10 text-primary rounded-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width:50px;height:50px;">
+                                        <svg xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-mail"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10z" /><path d="M3 7l9 6l9 -6" /></svg>
+                                    </div>
+
+                                    <!-- Text -->
+                                    <div class="ms-3">
+                                        <h5 class="card-title m-0 mb-1 fw-medium text-primary" style=" margin-top: -3px !important; ">
+                                            Email Settings
+                                        </h5>
+                                        <p class="m-0 text-dark">Configure Brevo or SMTP for sending email notifications.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="col-md-4 <?= hasPermission(json_decode($global_response_permission['response'][0]['permission'], true), 'system_settings', 'manage_cron', $global_user_response['response'][0]['role']) ? '' : 'd-none' ?>" onclick="load_content('System Settings','<?php echo $site_url.$path_admin ?>/system-settings/cron-job','nav-item-system-settings')"  style="cursor: pointer;">
                         <div class="card h-100">
                             <div class="card-body">

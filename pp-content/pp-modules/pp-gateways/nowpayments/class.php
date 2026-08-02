@@ -1,3 +1,4 @@
+<?php
 /**
  * Piprapay NowPayments Module
  *
@@ -9,7 +10,6 @@
  * @link      https://github.com/obaidullahrion
  */
 
-<?php
     class NowpaymentsGateway
     {
         public function info()
