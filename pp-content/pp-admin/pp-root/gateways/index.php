@@ -230,10 +230,28 @@
               <div class="col-lg-12">
                 <label class="form-label">Gateway <span class="text-danger">*</span></label>
                 <select class="js-select" name="gateway" data-search="true" data-remove="true" data-placeholder="Select gateway" required>
+                    <option value="" selected disabled>Select gateway</option>
                     <?php
                         $gateways = [];
 
-                        $gatewayDirs = glob(__DIR__ . '/../../../pp-modules/pp-gateways/*', GLOB_ONLYDIR);
+                        // Resolve the module directory first. glob() with GLOB_ONLYDIR can
+                        // return an empty list on some hosting setups (notably when module
+                        // folders are symlinks), which made the Choices search appear empty.
+                        $gatewayModulesPath = realpath(dirname(__DIR__, 3) . '/pp-modules/pp-gateways');
+                        $gatewayDirs = [];
+
+                        if ($gatewayModulesPath !== false && is_readable($gatewayModulesPath)) {
+                            foreach (scandir($gatewayModulesPath) ?: [] as $entry) {
+                                if ($entry === '.' || $entry === '..') {
+                                    continue;
+                                }
+
+                                $modulePath = $gatewayModulesPath . DIRECTORY_SEPARATOR . $entry;
+                                if (is_dir($modulePath)) {
+                                    $gatewayDirs[] = $modulePath;
+                                }
+                            }
+                        }
 
                         foreach ($gatewayDirs as $dir) {
 
@@ -256,9 +274,13 @@
                             $gateways[$slug] = $gatewayObj->info();
                         }
 
+                        uasort($gateways, static function ($first, $second) {
+                            return strcasecmp($first['title'] ?? '', $second['title'] ?? '');
+                        });
+
                         foreach ($gateways as $slug => $gateway) {
                     ?>
-                            <option value="<?php echo $slug?>"><?php echo $gateway['title']?></option>
+                            <option value="<?php echo htmlspecialchars($slug, ENT_QUOTES, 'UTF-8')?>"><?php echo htmlspecialchars($gateway['title'] ?? $slug, ENT_QUOTES, 'UTF-8')?></option>
                     <?php
                         }
                     ?>

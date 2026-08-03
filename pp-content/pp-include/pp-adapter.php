@@ -4681,6 +4681,142 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
                 }
             }
 
+            if($action == "email-settings"){
+                if($global_user_login == true){
+                    if (!canAccessPage(json_decode($global_response_permission['response'][0]['permission'], true), 'system_settings', $global_user_response['response'][0]['role'])) {
+                        echo json_encode(['status' => 'false', 'title' => 'Access denied', 'message' => 'You need permission to perform this action. Please contact the admin.' , 'csrf_token' => $new_csrf_token]);
+                        exit();
+                    }
+
+                    if (!hasPermission(json_decode($global_response_permission['response'][0]['permission'], true), 'system_settings', 'manage_email', $global_user_response['response'][0]['role'])) {
+                        echo json_encode(['status' => 'false', 'title' => 'Access denied', 'message' => 'You need permission to perform this action. Please contact the admin.' , 'csrf_token' => $new_csrf_token]);
+                        exit();
+                    }
+
+                    $notify_email = escape_string($_POST['notify_email'] ?? '');
+                    $notify_name = escape_string($_POST['notify_name'] ?? '');
+
+                    if (!filter_var($notify_email, FILTER_VALIDATE_EMAIL)) {
+                        echo json_encode(['status' => 'false', 'title' => 'Incomplete Information', 'message' => 'Please provide a valid admin notification email.', 'csrf_token' => $new_csrf_token]);
+                        exit();
+                    }
+
+                    $email_provider = escape_string($_POST['email_provider'] ?? 'smtp');
+                    if (!in_array($email_provider, ['smtp', 'brevo'], true)) {
+                        $email_provider = 'smtp';
+                    }
+
+                    $brevo_api_key = escape_string($_POST['brevo_api_key'] ?? '');
+                    $brevo_sender_name = escape_string($_POST['brevo_sender_name'] ?? '');
+                    $brevo_sender_email = escape_string($_POST['brevo_sender_email'] ?? '');
+
+                    $smtp_host = escape_string($_POST['smtp_host'] ?? '');
+                    $smtp_port = escape_string($_POST['smtp_port'] ?? '');
+                    $smtp_encryption = escape_string($_POST['smtp_encryption'] ?? 'tls');
+                    if (!in_array($smtp_encryption, ['tls', 'ssl', 'none'], true)) {
+                        $smtp_encryption = 'tls';
+                    }
+                    $smtp_username = escape_string($_POST['smtp_username'] ?? '');
+                    $smtp_password = escape_string($_POST['smtp_password'] ?? '');
+                    $smtp_sender_name = escape_string($_POST['smtp_sender_name'] ?? '');
+                    $smtp_sender_email = escape_string($_POST['smtp_sender_email'] ?? '');
+
+                    if ($email_provider === 'brevo') {
+                        if ($brevo_api_key === '' || !filter_var($brevo_sender_email, FILTER_VALIDATE_EMAIL)) {
+                            echo json_encode(['status' => 'false', 'title' => 'Incomplete Information', 'message' => 'Please provide a valid Brevo API key and sender email.', 'csrf_token' => $new_csrf_token]);
+                            exit();
+                        }
+                    } else {
+                        if ($smtp_host === '' || !ctype_digit((string)$smtp_port) || !filter_var($smtp_sender_email, FILTER_VALIDATE_EMAIL)) {
+                            echo json_encode(['status' => 'false', 'title' => 'Incomplete Information', 'message' => 'Please provide a valid SMTP host, port, and sender email.', 'csrf_token' => $new_csrf_token]);
+                            exit();
+                        }
+                    }
+
+                    set_env('email-settings-notify_email', $notify_email);
+                    set_env('email-settings-notify_name', $notify_name);
+                    set_env('email-settings-provider', $email_provider);
+                    set_env('email-settings-brevo_api_key', $brevo_api_key);
+                    set_env('email-settings-brevo_sender_name', $brevo_sender_name);
+                    set_env('email-settings-brevo_sender_email', $brevo_sender_email);
+                    set_env('email-settings-smtp_host', $smtp_host);
+                    set_env('email-settings-smtp_port', $smtp_port);
+                    set_env('email-settings-smtp_encryption', $smtp_encryption);
+                    set_env('email-settings-smtp_username', $smtp_username);
+                    set_env('email-settings-smtp_password', $smtp_password);
+                    set_env('email-settings-smtp_sender_name', $smtp_sender_name);
+                    set_env('email-settings-smtp_sender_email', $smtp_sender_email);
+
+                    echo json_encode(['status' => 'true', 'title' => 'Settings Updated', 'message' => 'The email settings has been updated successfully.', 'csrf_token' => $new_csrf_token]);
+                }else{
+                    echo json_encode(['status' => 'false', 'title' => 'Request Failed', 'message' => 'Invalid request' , 'csrf_token' => $new_csrf_token]);
+                }
+            }
+
+            if($action == "email-settings-test"){
+                if($global_user_login == true){
+                    if (!canAccessPage(json_decode($global_response_permission['response'][0]['permission'], true), 'system_settings', $global_user_response['response'][0]['role'])) {
+                        echo json_encode(['status' => 'false', 'title' => 'Access denied', 'message' => 'You need permission to perform this action. Please contact the admin.' , 'csrf_token' => $new_csrf_token]);
+                        exit();
+                    }
+
+                    if (!hasPermission(json_decode($global_response_permission['response'][0]['permission'], true), 'system_settings', 'manage_email', $global_user_response['response'][0]['role'])) {
+                        echo json_encode(['status' => 'false', 'title' => 'Access denied', 'message' => 'You need permission to perform this action. Please contact the admin.' , 'csrf_token' => $new_csrf_token]);
+                        exit();
+                    }
+
+                    $test_recipient = escape_string($_POST['test_recipient'] ?? '');
+                    if (!filter_var($test_recipient, FILTER_VALIDATE_EMAIL)) {
+                        echo json_encode(['status' => 'false', 'title' => 'Invalid Recipient', 'message' => 'Please enter a valid email address to send the test email to.', 'csrf_token' => $new_csrf_token]);
+                        exit();
+                    }
+
+                    $email_provider = escape_string($_POST['email_provider'] ?? 'smtp');
+                    if (!in_array($email_provider, ['smtp', 'brevo'], true)) {
+                        $email_provider = 'smtp';
+                    }
+
+                    $subject = 'PipraPay Test Email';
+                    $body = '<p>This is a test email from your PipraPay admin panel. If you received this, your email settings are working correctly.</p>';
+
+                    if ($email_provider === 'brevo') {
+                        $brevo_api_key = escape_string($_POST['brevo_api_key'] ?? '');
+                        $brevo_sender_name = escape_string($_POST['brevo_sender_name'] ?? '');
+                        $brevo_sender_email = escape_string($_POST['brevo_sender_email'] ?? '');
+
+                        if ($brevo_api_key === '' || !filter_var($brevo_sender_email, FILTER_VALIDATE_EMAIL)) {
+                            echo json_encode(['status' => 'false', 'title' => 'Incomplete Information', 'message' => 'Please provide a valid Brevo API key and sender email before testing.', 'csrf_token' => $new_csrf_token]);
+                            exit();
+                        }
+
+                        $result = sendBrevoMail($brevo_api_key, $brevo_sender_email, $brevo_sender_name, $test_recipient, '', $subject, $body);
+                    } else {
+                        $smtp_host = escape_string($_POST['smtp_host'] ?? '');
+                        $smtp_port = escape_string($_POST['smtp_port'] ?? '');
+                        $smtp_encryption = escape_string($_POST['smtp_encryption'] ?? 'tls');
+                        $smtp_username = escape_string($_POST['smtp_username'] ?? '');
+                        $smtp_password = escape_string($_POST['smtp_password'] ?? '');
+                        $smtp_sender_name = escape_string($_POST['smtp_sender_name'] ?? '');
+                        $smtp_sender_email = escape_string($_POST['smtp_sender_email'] ?? '');
+
+                        if ($smtp_host === '' || !ctype_digit((string)$smtp_port) || !filter_var($smtp_sender_email, FILTER_VALIDATE_EMAIL)) {
+                            echo json_encode(['status' => 'false', 'title' => 'Incomplete Information', 'message' => 'Please provide a valid SMTP host, port, and sender email before testing.', 'csrf_token' => $new_csrf_token]);
+                            exit();
+                        }
+
+                        $result = sendSmtpMail($smtp_host, (int)$smtp_port, $smtp_encryption, $smtp_username, $smtp_password, $smtp_sender_email, $smtp_sender_name, $test_recipient, '', $subject, $body);
+                    }
+
+                    if ($result['status'] === true) {
+                        echo json_encode(['status' => 'true', 'title' => 'Test Email Sent', 'message' => $result['message'], 'csrf_token' => $new_csrf_token]);
+                    } else {
+                        echo json_encode(['status' => 'false', 'title' => 'Test Email Failed', 'message' => $result['message'], 'csrf_token' => $new_csrf_token]);
+                    }
+                }else{
+                    echo json_encode(['status' => 'false', 'title' => 'Request Failed', 'message' => 'Invalid request' , 'csrf_token' => $new_csrf_token]);
+                }
+            }
+
             if($action == "faq-list"){
                 if($global_user_login == true){
                     if (!canAccessPage(json_decode($global_response_permission['response'][0]['permission'], true), 'brand_settings', $global_user_response['response'][0]['role'])) {
@@ -6860,6 +6996,10 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
                                             $condition = "ref = '".$itemID."'"; 
                                             
                                             updateData($db_prefix.'transaction', $columns, $values, $condition);
+
+                                            if (($response_brand['response'][0]['status'] ?? '') !== 'completed') {
+                                                sendCompletedTransactionAdminNotification($itemID);
+                                            }
                                         }
                                     }
 
@@ -8893,6 +9033,8 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
                                                                 $condition = 'id ="'.$response_transaction['response'][0]['id'].'"'; 
 
                                                                 updateData($db_prefix.'transaction', $columns, $values, $condition);
+
+                                                                sendCompletedTransactionAdminNotification($transaction_id);
 
                                                                 $params = [ ':ref' => $transaction_id, ':status' => 'completed' ];
 

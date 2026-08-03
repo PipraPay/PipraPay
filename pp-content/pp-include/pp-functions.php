@@ -761,7 +761,308 @@
 
         curl_multi_close($mh);
 
-        return $results; 
+        return $results;
+    }
+
+    function encodeMailHeader(string $value): string {
+        if (preg_match('/^[\x20-\x7E]*$/', $value)) {
+            return $value;
+        }
+
+        return '=?UTF-8?B?' . base64_encode($value) . '?=';
+    }
+
+    function sendBrevoMail(string $apiKey, string $fromEmail, string $fromName, string $toEmail, string $toName, string $subject, string $htmlBody): array {
+        $payload = [
+            'sender'      => ['name' => $fromName, 'email' => $fromEmail],
+            'to'          => [['email' => $toEmail, 'name' => $toName !== '' ? $toName : $toEmail]],
+            'subject'     => $subject,
+            'htmlContent' => $htmlBody,
+        ];
+
+        $ch = curl_init('https://api.brevo.com/v3/smtp/email');
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'api-key: ' . $apiKey,
+            ],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+
+        $result = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($result === false) {
+            return ['status' => false, 'message' => 'Brevo request failed: ' . $curlError];
+        }
+
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return ['status' => true, 'message' => 'Email sent successfully via Brevo.'];
+        }
+
+        $decoded = json_decode($result, true);
+        $errorMessage = $decoded['message'] ?? $result;
+
+        return ['status' => false, 'message' => 'Brevo API error (' . $httpCode . '): ' . $errorMessage];
+    }
+
+    function sendSmtpMail(string $host, int $port, string $encryption, string $username, string $password, string $fromEmail, string $fromName, string $toEmail, string $toName, string $subject, string $htmlBody): array {
+        $timeout = 15;
+        $transport = strtolower($encryption) === 'ssl' ? 'ssl://' : '';
+
+        $socket = @fsockopen($transport . $host, $port, $errno, $errstr, $timeout);
+        if (!$socket) {
+            return ['status' => false, 'message' => 'Connection to SMTP server failed: ' . $errstr . ' (' . $errno . ')'];
+        }
+
+        stream_set_timeout($socket, $timeout);
+
+        $readResponse = function () use ($socket) {
+            $data = '';
+            while (($line = fgets($socket, 515)) !== false) {
+                $data .= $line;
+                if (isset($line[3]) && $line[3] === ' ') {
+                    break;
+                }
+            }
+            return $data;
+        };
+
+        $sendCommand = function (string $cmd) use ($socket) {
+            fwrite($socket, $cmd . "\r\n");
+        };
+
+        $localhost = $_SERVER['SERVER_NAME'] ?? 'localhost';
+
+        $response = $readResponse();
+        if (substr($response, 0, 3) !== '220') {
+            fclose($socket);
+            return ['status' => false, 'message' => 'Unexpected SMTP greeting: ' . trim($response)];
+        }
+
+        $sendCommand('EHLO ' . $localhost);
+        $response = $readResponse();
+        if (substr($response, 0, 3) !== '250') {
+            fclose($socket);
+            return ['status' => false, 'message' => 'EHLO failed: ' . trim($response)];
+        }
+
+        if (strtolower($encryption) === 'tls') {
+            $sendCommand('STARTTLS');
+            $response = $readResponse();
+            if (substr($response, 0, 3) !== '220') {
+                fclose($socket);
+                return ['status' => false, 'message' => 'STARTTLS failed: ' . trim($response)];
+            }
+
+            if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                fclose($socket);
+                return ['status' => false, 'message' => 'TLS negotiation with SMTP server failed.'];
+            }
+
+            $sendCommand('EHLO ' . $localhost);
+            $response = $readResponse();
+            if (substr($response, 0, 3) !== '250') {
+                fclose($socket);
+                return ['status' => false, 'message' => 'EHLO after STARTTLS failed: ' . trim($response)];
+            }
+        }
+
+        if ($username !== '') {
+            $sendCommand('AUTH LOGIN');
+            $response = $readResponse();
+            if (substr($response, 0, 3) !== '334') {
+                fclose($socket);
+                return ['status' => false, 'message' => 'AUTH LOGIN not accepted: ' . trim($response)];
+            }
+
+            $sendCommand(base64_encode($username));
+            $response = $readResponse();
+            if (substr($response, 0, 3) !== '334') {
+                fclose($socket);
+                return ['status' => false, 'message' => 'SMTP username rejected: ' . trim($response)];
+            }
+
+            $sendCommand(base64_encode($password));
+            $response = $readResponse();
+            if (substr($response, 0, 3) !== '235') {
+                fclose($socket);
+                return ['status' => false, 'message' => 'SMTP authentication failed: ' . trim($response)];
+            }
+        }
+
+        $sendCommand('MAIL FROM: <' . $fromEmail . '>');
+        $response = $readResponse();
+        if (substr($response, 0, 3) !== '250') {
+            fclose($socket);
+            return ['status' => false, 'message' => 'MAIL FROM rejected: ' . trim($response)];
+        }
+
+        $sendCommand('RCPT TO: <' . $toEmail . '>');
+        $response = $readResponse();
+        if (substr($response, 0, 3) !== '250' && substr($response, 0, 3) !== '251') {
+            fclose($socket);
+            return ['status' => false, 'message' => 'RCPT TO rejected: ' . trim($response)];
+        }
+
+        $sendCommand('DATA');
+        $response = $readResponse();
+        if (substr($response, 0, 3) !== '354') {
+            fclose($socket);
+            return ['status' => false, 'message' => 'DATA command rejected: ' . trim($response)];
+        }
+
+        $fromHeader = $fromName !== '' ? encodeMailHeader($fromName) . ' <' . $fromEmail . '>' : $fromEmail;
+        $toHeader = $toName !== '' ? encodeMailHeader($toName) . ' <' . $toEmail . '>' : $toEmail;
+
+        $headers = [
+            'From: ' . $fromHeader,
+            'To: ' . $toHeader,
+            'Subject: ' . encodeMailHeader($subject),
+            'MIME-Version: 1.0',
+            'Content-Type: text/html; charset=UTF-8',
+            'Date: ' . date('r'),
+            'Message-ID: <' . uniqid('', true) . '@' . preg_replace('/[^a-zA-Z0-9.\-]/', '', $host) . '>',
+        ];
+
+        $body = preg_replace('/\r\n|\r|\n/', "\r\n", $htmlBody);
+        $body = preg_replace('/^\./m', '..', $body);
+
+        $sendCommand(implode("\r\n", $headers) . "\r\n\r\n" . $body . "\r\n.");
+        $response = $readResponse();
+        if (substr($response, 0, 3) !== '250') {
+            fclose($socket);
+            return ['status' => false, 'message' => 'Message not accepted by SMTP server: ' . trim($response)];
+        }
+
+        $sendCommand('QUIT');
+        fclose($socket);
+
+        return ['status' => true, 'message' => 'Email sent successfully via SMTP.'];
+    }
+
+    function sendEmailNotification(string $toEmail, string $toName, string $subject, string $htmlBody): array {
+        if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+            return ['status' => false, 'message' => 'Invalid recipient email address.'];
+        }
+
+        $provider = get_env('email-settings-provider');
+        $provider = $provider !== '' ? $provider : 'smtp';
+
+        if ($provider === 'brevo') {
+            $apiKey = get_env('email-settings-brevo_api_key');
+            $fromEmail = get_env('email-settings-brevo_sender_email');
+            $fromName = get_env('email-settings-brevo_sender_name');
+
+            if ($apiKey === '' || $fromEmail === '') {
+                return ['status' => false, 'message' => 'Brevo is not fully configured. Please set the API key and sender email.'];
+            }
+
+            return sendBrevoMail($apiKey, $fromEmail, $fromName, $toEmail, $toName, $subject, $htmlBody);
+        }
+
+        $host = get_env('email-settings-smtp_host');
+        $port = get_env('email-settings-smtp_port');
+        $encryption = get_env('email-settings-smtp_encryption');
+        $username = get_env('email-settings-smtp_username');
+        $password = get_env('email-settings-smtp_password');
+        $fromEmail = get_env('email-settings-smtp_sender_email');
+        $fromName = get_env('email-settings-smtp_sender_name');
+
+        if ($host === '' || $port === '' || $fromEmail === '') {
+            return ['status' => false, 'message' => 'SMTP is not fully configured. Please set the host, port, and sender email.'];
+        }
+
+        return sendSmtpMail($host, (int)$port, $encryption, $username, $password, $fromEmail, $fromName, $toEmail, $toName, $subject, $htmlBody);
+    }
+
+    function sendAdminNotificationEmail(string $subject, string $htmlBody): array {
+        $notifyEmail = get_env('email-settings-notify_email');
+        $notifyName = get_env('email-settings-notify_name');
+
+        if ($notifyEmail === '') {
+            return ['status' => false, 'message' => 'No admin notification email is configured in Email Settings.'];
+        }
+
+        return sendEmailNotification($notifyEmail, $notifyName, $subject, $htmlBody);
+    }
+
+    function sendCompletedTransactionAdminNotification(string $transactionRef): array {
+        global $db_prefix;
+
+        $transactionRef = trim($transactionRef);
+        if ($transactionRef === '') {
+            return ['status' => false, 'message' => 'Transaction reference is required.'];
+        }
+
+        $transactionResponse = json_decode(getData(
+            $db_prefix.'transaction',
+            'WHERE ref = :ref AND status = :status LIMIT 1',
+            '* FROM',
+            [':ref' => $transactionRef, ':status' => 'completed']
+        ), true);
+
+        if (($transactionResponse['status'] ?? false) !== true || empty($transactionResponse['response'][0])) {
+            return ['status' => false, 'message' => 'Completed transaction was not found.'];
+        }
+
+        $transaction = $transactionResponse['response'][0];
+        $customer = json_decode($transaction['customer_info'] ?? '', true);
+        $customer = is_array($customer) ? $customer : [];
+
+        $gatewayName = $transaction['gateway_id'] ?? 'N/A';
+        if (!empty($transaction['gateway_id']) && !empty($transaction['brand_id'])) {
+            $gatewayResponse = json_decode(getData(
+                $db_prefix.'gateways',
+                'WHERE gateway_id = :gateway_id AND brand_id = :brand_id LIMIT 1',
+                '* FROM',
+                [
+                    ':gateway_id' => $transaction['gateway_id'],
+                    ':brand_id' => $transaction['brand_id'],
+                ]
+            ), true);
+
+            if (($gatewayResponse['status'] ?? false) === true && !empty($gatewayResponse['response'][0])) {
+                $gatewayName = $gatewayResponse['response'][0]['display']
+                    ?? $gatewayResponse['response'][0]['name']
+                    ?? $gatewayName;
+            }
+        }
+
+        $escape = static function ($value): string {
+            return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+        };
+
+        $amount = money_round($transaction['amount'] ?? '0', 2);
+        $currency = $transaction['currency'] ?? '';
+        $subject = 'Payment completed: ' . $transactionRef;
+        $htmlBody = '<h2>Payment completed</h2>'
+            . '<p>A transaction has been completed successfully.</p>'
+            . '<table cellpadding="6" cellspacing="0" border="0">'
+            . '<tr><td><strong>Reference</strong></td><td>' . $escape($transactionRef) . '</td></tr>'
+            . '<tr><td><strong>Transaction ID</strong></td><td>' . $escape($transaction['trx_id'] ?? 'N/A') . '</td></tr>'
+            . '<tr><td><strong>Customer</strong></td><td>' . $escape($customer['name'] ?? 'N/A') . '</td></tr>'
+            . '<tr><td><strong>Email</strong></td><td>' . $escape($customer['email'] ?? 'N/A') . '</td></tr>'
+            . '<tr><td><strong>Gateway</strong></td><td>' . $escape($gatewayName) . '</td></tr>'
+            . '<tr><td><strong>Amount</strong></td><td>' . $escape($amount . ' ' . $currency) . '</td></tr>'
+            . '<tr><td><strong>Status</strong></td><td>Completed</td></tr>'
+            . '</table>';
+
+        $result = sendAdminNotificationEmail($subject, $htmlBody);
+        if (($result['status'] ?? false) !== true) {
+            error_log('[PipraPay] Admin transaction email failed for ' . $transactionRef . ': ' . ($result['message'] ?? 'Unknown error'));
+        }
+
+        return $result;
     }
 
     function senderWhitelist(?string $sender = null, ?string $providerKey = null, string $mode = 'provider', ?string $providerName = null) {
@@ -1343,7 +1644,8 @@
                     'manage_general' => true,
                     'manage_cron' => true,
                     'manage_update'   => true,
-                    'manage_import'   => true
+                    'manage_import'   => true,
+                    'manage_email'    => true
                 ],
             ],
             'pages' => [
@@ -1912,6 +2214,8 @@
                 $condition = 'id ="'.$response_transaciton['response'][0]['id'].'"'; 
 
                 updateData($db_prefix.'transaction', $columns, $values, $condition);
+
+                sendCompletedTransactionAdminNotification($response_transaciton['response'][0]['ref']);
 
                 $params = [ ':ref' => $response_transaciton['response'][0]['ref'], ':status' => 'completed' ];
 

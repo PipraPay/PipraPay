@@ -1088,6 +1088,31 @@
                                         }
                                     }
 
+                                    // Prefer the checkout return URL and fall back to the
+                                    // brand's configured website after a completed payment.
+                                    $redirectUrl = '--';
+                                    if ($transactionRow['status'] === 'completed') {
+                                        $redirectUrl = $finalUrl;
+
+                                        if ($redirectUrl === '' || $redirectUrl === '--') {
+                                            $brandWebsite = trim($response_brand['response'][0]['support_website'] ?? '');
+                                            if ($brandWebsite !== '' && $brandWebsite !== '--') {
+                                                $redirectUrl = addQueryParams($brandWebsite, [
+                                                    'pp_status' => $transactionRow['status'],
+                                                    'transaction_ref' => $transactionRow['ref'],
+                                                ]);
+                                            }
+                                        }
+
+                                        $redirectScheme = strtolower((string)parse_url($redirectUrl, PHP_URL_SCHEME));
+                                        if (
+                                            filter_var($redirectUrl, FILTER_VALIDATE_URL) === false
+                                            || !in_array($redirectScheme, ['http', 'https'], true)
+                                        ) {
+                                            $redirectUrl = '--';
+                                        }
+                                    }
+
                                     $response_faq = json_decode(getData($db_prefix.'faq',' WHERE brand_id ="'.$response_brand['response'][0]['brand_id'].'" AND status ="active" ORDER BY 1 DESC'),true);
                                     
                                     /* Clean Transaction Info */
@@ -1107,6 +1132,7 @@
                                         'local_net_amount'       => money_round($transactionRow['local_net_amount']),
                                         'local_currency'          => $transactionRow['local_currency'],
                                         'return_url'          => $finalUrl,
+                                        'redirect_url'        => $redirectUrl,
                                         'created_date'          => $transactionRow['created_date'],
                                         'updated_date'          => $transactionRow['updated_date'],
                                         'status'          => $transactionRow['status'],
@@ -1853,6 +1879,8 @@
                                                     $condition = 'id ="'.$row['id'].'"'; 
 
                                                     updateData($db_prefix.'transaction', $columns, $values, $condition);
+
+                                                    sendCompletedTransactionAdminNotification($row['ref']);
 
 
                                                     $metadata = json_decode($row['metadata'], true) ?: [];
