@@ -2663,7 +2663,7 @@
                             'copy' => true,
                             'value' => $data['transaction']['local_net_amount'],
                             'vars' => [
-                                '{amount}' => number_format($data['transaction']['local_net_amount'], 2),
+                                '{amount}' => number_format((float)$data['transaction']['local_net_amount'], 2),
                                 '{currency}' => $data['transaction']['local_currency']
                             ]
                         ],
