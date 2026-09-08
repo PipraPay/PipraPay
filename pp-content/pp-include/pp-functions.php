@@ -2285,6 +2285,16 @@
         ];
     }
 
+    function pp_default_supported_languages(){
+        return [
+            'en' => 'English',
+            'bn' => 'বাংলা',
+            'hi' => 'हिन्दी',
+            'ur' => 'اردو',
+            'ar' => 'العربية',
+        ];
+    }
+
     function pp_gateway_info($gateway_id = '', $data = []){
         global $db_prefix;
 
@@ -2349,23 +2359,13 @@
 
                     $gateway_info = $gateway->info();
 
-                    if (method_exists($gateway, 'supported_languages')) {
-                        $supported_languages = $gateway->supported_languages();
-                    }else{
-                        $supported_languages = [];
-                    }
+                    $supported_languages = method_exists($gateway, 'supported_languages') ? $gateway->supported_languages() : [];
                 }else{
-                    if($response_gateway['response'][0]['tab'] == 'bank'){
-                        $supported_languages = [
-                            'en' => 'English',
-                            'bn' => 'বাংলা',
-                            'hi' => 'हिन्दी',
-                            'ur' => 'اردو',
-                            'ar' => 'العربية',
-                        ];
-                    }else{
-                        $supported_languages = [];
-                    }
+                    $supported_languages = [];
+                }
+
+                if(empty($supported_languages)){
+                    $supported_languages = pp_default_supported_languages();
                 }
 
                 $gatewayList = [
@@ -2513,10 +2513,10 @@
 
                 $gateway_info = $gateway->info();
 
-                if (method_exists($gateway, 'supported_languages')) {
-                    $supported_languages = $gateway->supported_languages();
-                }else{
-                    $supported_languages = [];
+                $supported_languages = method_exists($gateway, 'supported_languages') ? $gateway->supported_languages() : [];
+
+                if(empty($supported_languages)){
+                    $supported_languages = pp_default_supported_languages();
                 }
 
                 if (method_exists($gateway, 'lang_text')) {
@@ -2528,13 +2528,7 @@
                 if($response_gateway['response'][0]['tab'] == 'bank'){
                     $gateway = '';
 
-                    $supported_languages = [
-                        'en' => 'English',
-                        'bn' => 'বাংলা',
-                        'hi' => 'हिन्दी',
-                        'ur' => 'اردو',
-                        'ar' => 'العربية',
-                    ];
+                    $supported_languages = pp_default_supported_languages();
 
                     $lang_text = [
                         'bank_step_bank_name' => [
@@ -2663,7 +2657,7 @@
                             'copy' => true,
                             'value' => $data['transaction']['local_net_amount'],
                             'vars' => [
-                                '{amount}' => number_format($data['transaction']['local_net_amount'], 2),
+                                '{amount}' => number_format((float)$data['transaction']['local_net_amount'], 2),
                                 '{currency}' => $data['transaction']['local_currency']
                             ]
                         ],
