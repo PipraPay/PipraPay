@@ -20,9 +20,9 @@
     $requirements = [
         [
             'name'     => 'PHP Version',
-            'required' => '8.1.x - 8.3.x',
+            'required' => '8.1.x - 8.5.x',
             'current'  => PHP_VERSION,
-            'check'    => version_compare(PHP_VERSION, '8.1.0', '>=') && version_compare(PHP_VERSION, '8.4.0', '<')
+            'check'    => version_compare(PHP_VERSION, '8.1.0', '>=') && version_compare(PHP_VERSION, '8.6.0', '<')
         ],
         [
             'name'     => 'cURL',
@@ -7205,7 +7205,13 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
 
                         set_env('last-auto-update-check', getCurrentDatetime('Y-m-d H:i:s'));
 
-                        $manifest = json_decode(file_get_contents('https://updates.piprapay.com/manifest.json'), true);
+                        $manifest_content = @file_get_contents('https://updates.piprapay.com/manifest.json');
+                        $manifest = !empty($manifest_content) ? json_decode($manifest_content, true) : null;
+
+                        if (!$manifest) {
+                            echo json_encode(['status' => 'false', 'title' => 'Update Check Failed', 'message' => 'Unable to connect to the update server. Please try again later.' , 'csrf_token' => $new_csrf_token]);
+                            exit();
+                        }
 
                         $current_code = $piprapay_current_version['version_code'];
                         $current_name = $piprapay_current_version['version_name'];

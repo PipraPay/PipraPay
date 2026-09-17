@@ -230,30 +230,44 @@
               <div class="col-lg-12">
                 <label class="form-label">Gateway <span class="text-danger">*</span></label>
                 <select class="js-select" name="gateway" data-search="true" data-remove="true" data-placeholder="Select gateway" required>
+                    <option value="">Select gateway</option>
                     <?php
                         $gateways = [];
 
-                        $gatewayDirs = glob(__DIR__ . '/../../../pp-modules/pp-gateways/*', GLOB_ONLYDIR);
+                        $gatewayPath = realpath(__DIR__ . '/../../../pp-modules/pp-gateways');
+                        if (!$gatewayPath || !is_dir($gatewayPath)) {
+                            $gatewayPath = dirname(__DIR__, 3) . '/pp-modules/pp-gateways';
+                        }
+                        if (!is_dir($gatewayPath) && isset($_SERVER['DOCUMENT_ROOT'])) {
+                            $gatewayPath = rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') . '/pp-content/pp-modules/pp-gateways';
+                        }
 
-                        foreach ($gatewayDirs as $dir) {
+                        $gatewayDirs = is_dir($gatewayPath) ? glob($gatewayPath . '/*', GLOB_ONLYDIR) : [];
 
-                            if (!file_exists($dir . '/class.php')) {
-                                continue;
+                        if (!empty($gatewayDirs)) {
+                            foreach ($gatewayDirs as $dir) {
+                                if (!file_exists($dir . '/class.php')) {
+                                    continue;
+                                }
+
+                                try {
+                                    require_once $dir . '/class.php';
+
+                                    $slug = basename($dir);
+
+                                    // twenty-six → TwentySixGateway
+                                    $class = str_replace(' ', '', ucwords(str_replace('-', ' ', $slug))) . 'Gateway';
+
+                                    if (!class_exists($class)) {
+                                        continue;
+                                    }
+
+                                    $gatewayObj = new $class();
+                                    $gateways[$slug] = $gatewayObj->info();
+                                } catch (Throwable $e) {
+                                    continue;
+                                }
                             }
-
-                            require_once $dir . '/class.php';
-
-                            $slug = basename($dir);
-
-                            // twenty-six → TwentySixTheme
-                            $class = str_replace(' ', '', ucwords(str_replace('-', ' ', $slug))) . 'Gateway';
-
-                            if (!class_exists($class)) {
-                                continue;
-                            }
-
-                            $gatewayObj = new $class();
-                            $gateways[$slug] = $gatewayObj->info();
                         }
 
                         foreach ($gateways as $slug => $gateway) {

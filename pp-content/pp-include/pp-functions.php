@@ -2080,17 +2080,42 @@
         $pdf->AddPage();
         $pdf->SetAutoPageBreak(true, 15);
 
+        $hasLogo = false;
         if (!empty($brand['logo'])) {
-            $pdf->Image($brand['logo'], 10, 10, 35);
+            try {
+                // If it's a URL or path, verify it can be loaded before calling FPDF->Image
+                $logoContent = @file_get_contents($brand['logo']);
+                if ($logoContent !== false) {
+                    $tmpLogo = tempnam(sys_get_temp_dir(), 'pp_logo_');
+                    if ($tmpLogo && file_put_contents($tmpLogo, $logoContent)) {
+                        $imgInfo = @getimagesize($tmpLogo);
+                        if ($imgInfo && in_array($imgInfo[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF])) {
+                            $ext = ($imgInfo[2] == IMAGETYPE_PNG) ? 'png' : (($imgInfo[2] == IMAGETYPE_GIF) ? 'gif' : 'jpg');
+                            $pdf->Image($tmpLogo, 10, 10, 35, 0, $ext);
+                            $hasLogo = true;
+                        }
+                        @unlink($tmpLogo);
+                    }
+                }
+            } catch (Exception $e) {
+                // Ignore logo load failure and fallback to brand text
+            }
         }
 
         $pdf->SetFont('Arial', 'B', 14);
-        $pdf->SetXY(50, 12);
-        $pdf->Cell(0, 8, $brand['name'], 0, 1);
-
-        $pdf->SetFont('Arial', '', 10);
-        $pdf->SetX(50);
-        $pdf->Cell(0, 6, $brand['address']['city'].', '.$brand['address']['country'], 0, 1);
+        if ($hasLogo) {
+            $pdf->SetXY(50, 12);
+            $pdf->Cell(0, 8, $brand['name'] ?? '', 0, 1);
+            $pdf->SetFont('Arial', '', 10);
+            $pdf->SetX(50);
+            $pdf->Cell(0, 6, ($brand['address']['city'] ?? '').(!empty($brand['address']['city']) && !empty($brand['address']['country']) ? ', ' : '').($brand['address']['country'] ?? ''), 0, 1);
+        } else {
+            $pdf->SetXY(10, 12);
+            $pdf->Cell(0, 8, $brand['name'] ?? '', 0, 1, 'C');
+            $pdf->SetFont('Arial', '', 10);
+            $pdf->SetX(10);
+            $pdf->Cell(0, 6, ($brand['address']['city'] ?? '').(!empty($brand['address']['city']) && !empty($brand['address']['country']) ? ', ' : '').($brand['address']['country'] ?? ''), 0, 1, 'C');
+        }
 
         $pdf->Ln(10);
 
@@ -2152,6 +2177,7 @@
         $pdf->Cell(0, 6, 'This is a system generated receipt.', 0, 1, 'C');
 
         $pdf->Output('D', 'Receipt-'.$tx['ref'].'.pdf');
+        exit;
     }
 
     function sectionTitle($pdf, $title)
