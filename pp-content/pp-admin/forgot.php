@@ -1,22 +1,20 @@
 <?php
-    if (!defined('PipraPay_INIT')) {
-        http_response_code(403);
-        exit('Direct access not allowed');
-    }
+if (!defined('PipraPay_INIT')) {
+    http_response_code(403);
+    exit('Direct access not allowed');
+}
 
-    if($global_user_2fa == true){
-?>
-        <script>location.href = "<?php echo $site_url?>2fa";</script>
-<?php
-        exit();
-    }else{
-        if($global_user_login == true){
-?>
-            <script>location.href = "<?php echo $site_url.$path_admin?>/dashboard";</script>
-<?php
-            exit();
-        }
-    }
+// Check 2FA condition
+if (!empty($global_user_2fa)) {
+    header("Location: " . $site_url . "2fa");
+    exit();
+} 
+
+// Check user login condition
+if (!empty($global_user_login)) {
+    header("Location: " . $site_url . ($path_admin ?? '') . "/dashboard");
+    exit();
+}
 ?>
 
 <!DOCTYPE html>
