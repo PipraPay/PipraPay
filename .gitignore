@@ -1,0 +1,4 @@
+# Graphify artifacts and cache
+graphify-out/
+.graphify*
+CLAUDE.md
