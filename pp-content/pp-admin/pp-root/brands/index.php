@@ -387,7 +387,6 @@
                         }
 
                         if (item.deleteable == "false") {
-                            redirectEdit = '';
                             manageAble = `disabled`;
                         }
 
