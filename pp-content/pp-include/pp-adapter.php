@@ -2100,11 +2100,6 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
                     }else{
                         $response = json_decode(getData($db_prefix.'brands','WHERE brand_id = "'.$brand_id.'"'),true);
                         if($response['status'] == true){
-                            if($response['response'][0]['id'] == 1 || $response['response'][0]['brand_id'] == $global_response_brand['response'][0]['brand_id']){
-                                echo json_encode(['status' => 'false', 'title' => 'Request Failed', 'message' => 'Invalid request' , 'csrf_token' => $new_csrf_token]);
-                                exit();
-                            }
-
                             if($response['response'][0]['identify_name'] !== $brand_name){
                                 $responseNameCheck = json_decode(getData($db_prefix.'brands','WHERE identify_name = "'.$brand_name.'"'),true);
                                 if($responseNameCheck['status'] == true){
