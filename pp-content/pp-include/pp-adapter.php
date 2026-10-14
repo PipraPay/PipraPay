@@ -8842,11 +8842,17 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
                                         $gateway = new $class();
 
                                         $gateway_info = $gateway->info();
-                                        $supported_languages = $gateway->supported_languages();
+                                        $supported_languages = method_exists($gateway, 'supported_languages') ? $gateway->supported_languages() : [];
                                         $lang_text = $gateway->lang_text();
+
+                                        if(empty($supported_languages)){
+                                            $supported_languages = pp_default_supported_languages();
+                                        }
                                     }else{
                                         if($response_gateway['response'][0]['tab'] == 'bank'){
                                             $gateway = '';
+
+                                            $supported_languages = pp_default_supported_languages();
 
                                             $gateway_info = [
                                                 'gateway_type'        => 'manual',

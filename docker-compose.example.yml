@@ -1,0 +1,51 @@
+version: '3.8'
+
+# Ei file ta copy kore "docker-compose.yml" banan, tarpor real passwords boshan.
+# docker-compose.yml .gitignore e ache, tai git e push hobe na.
+
+services:
+  web:
+    container_name: piprapay-web
+    build:
+      context: .
+    ports:
+      - "7667:80"
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+    networks:
+      - piprapay-network
+
+  db:
+    container_name: piprapaydbb
+    image: mysql:8.0
+    ports:
+      - "7668:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: your_root_password
+      MYSQL_DATABASE: piprapay
+      MYSQL_USER: piprapay_user
+      MYSQL_PASSWORD: your_db_password
+    volumes:
+      - piprapay-db-data:/var/lib/mysql
+      - ./pp-content/pp-install/db.sql:/docker-entrypoint-initdb.d/db.sql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - piprapay-network
+
+volumes:
+  piprapay-db-data:
+
+networks:
+  piprapay-network:
+    driver: bridge

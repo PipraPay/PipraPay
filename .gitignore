@@ -1,0 +1,8 @@
+# Real credentials ekhane rakha hoy — .example file copy kore nijer values din
+pp-config.php
+docker-compose.yml
+
+# System / editor junk
+.DS_Store
+Thumbs.db
+*.log

@@ -1,3 +1,4 @@
+<?php
 /**
  * Piprapay NowPayments Module
  *
@@ -8,8 +9,6 @@
  * @license   MIT (https://opensource.org/licenses/MIT)
  * @link      https://github.com/obaidullahrion
  */
-
-<?php
     class NowpaymentsGateway
     {
         public function info()
@@ -219,7 +218,8 @@
             // Sort alphabetically for easier browsing
             sort($currencies);
 
-            $current_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+            $current_url = ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')
+                          || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https' ? 'https' : 'http')
                          . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
 
             // Pretty names for the coins we know about — everything else just shows the ticker
